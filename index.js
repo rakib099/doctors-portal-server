@@ -27,6 +27,7 @@ async function run() {
             const query = {};
             const cursor = appointmentOptionCollection.find(query);
             const options = await cursor.toArray();
+
             // get the booking of the provided day
             const bookingQuery = {appointmentDate: date};
             const alreadyBooked = await bookingCollection.find(bookingQuery).toArray();
@@ -45,13 +46,29 @@ async function run() {
             res.send(options);
         });
 
+        /* -----------
+         Bookings API
+        ------------- */
+        app.get('/bookings', async (req, res) => {
+            let query = {};
+            const email = req.query.email;
+            if (req.query.email) {
+                query = {
+                    email: email
+                }
+            }
+            const cursor = bookingCollection.find(query);
+            const bookings = await cursor.toArray();
+            res.send(bookings);
+        });
+
         app.post('/bookings', async (req, res) => {
             const booking = req.body;
             console.log(booking);
             const query = {
                 appointmentDate: booking.appointmentDate,
-                treatment: booking.treatment,
-                email: booking.email
+                email: booking.email,
+                treatment: booking.treatment
             }
             const alreadyBooked = await bookingCollection.find(query).toArray();
             if (alreadyBooked.length) {
