@@ -120,12 +120,21 @@ async function run() {
             res.send(users);
         });
 
+        // check whether a user is admin or not
+        app.get('/users/admin/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = {email};
+            const user = await userCollection.findOne(query);
+            res.send({isAdmin: user?.role === 'admin'});
+        });
+
         app.post('/users', async (req, res) => {
             const user = req.body;
             const result = await userCollection.insertOne(user);
             res.send(result);
         });
 
+        // Make Admin api
         app.put('/users/admin/:id', verifyJWT, async (req, res) => {
             const decodedEmail = req.decoded.email;
             const query = {email: decodedEmail};
