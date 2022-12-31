@@ -14,13 +14,13 @@ app.use(express.json());
 function verifyJWT(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-        return res.status(401).send({message: 'Unauthorized access'});
+        return res.status(401).send({ message: 'Unauthorized access' });
     }
     const token = authHeader.split(' ')[1];
 
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function(err, decoded) {
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
         if (err) {
-            return res.status(403).send({message: 'Forbidden access'});
+            return res.status(403).send({ message: 'Forbidden access' });
         }
         req.decoded = decoded;
         next();
@@ -38,6 +38,17 @@ async function run() {
 
         const bookingCollection = client.db("doctorsPortal").collection("bookings");
         const userCollection = client.db("doctorsPortal").collection("users");
+
+        // middleware verifyAdmin
+        async function verifyAdmin(req, res, next) {
+            const decodedEmail = req.decoded.email;
+            const query = { email: decodedEmail };
+            const user = await userCollection.findOne(query);
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: 'Forbidden access' });
+            }
+            next();
+        }
 
         // creating jwt token
         app.get('/jwt', async (req, res) => {
@@ -84,7 +95,7 @@ async function run() {
             const email = req.query.email;
 
             if (decoded.email !== email) {
-                return res.status(403).send({message: 'Forbidden access'});
+                return res.status(403).send({ message: 'Forbidden access' });
             }
 
             query = {
@@ -113,21 +124,27 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/users', async (req, res) => {
+        /* ----------
+          Users API
+        ---------- */
+        // get all the users (only for admins)
+        app.get('/users', verifyJWT, verifyAdmin, async (req, res) => {
+            console.log('admin proven');
             const query = {};
             const cursor = userCollection.find(query);
-            const users  = await cursor.toArray();
+            const users = await cursor.toArray();
             res.send(users);
         });
 
-        // check whether a user is admin or not
+        // useAdmin hook api
         app.get('/users/admin/:email', async (req, res) => {
             const email = req.params.email;
-            const query = {email};
+            const query = { email };
             const user = await userCollection.findOne(query);
-            res.send({isAdmin: user?.role === 'admin'});
+            res.send({ isAdmin: user?.role === 'admin' });
         });
 
+        // Saving user to DB
         app.post('/users', async (req, res) => {
             const user = req.body;
             const result = await userCollection.insertOne(user);
@@ -135,16 +152,9 @@ async function run() {
         });
 
         // Make Admin api
-        app.put('/users/admin/:id', verifyJWT, async (req, res) => {
-            const decodedEmail = req.decoded.email;
-            const query = {email: decodedEmail};
-            const user = await userCollection.findOne(query);
-            if (user?.role !== 'admin') {
-                return res.status(403).send({message: 'Forbidden access'});
-            }
-
+        app.put('/users/admin/:id', verifyJWT, verifyAdmin, async (req, res) => {
             const id = req.params.id;
-            const filter = {_id: ObjectId(id)};
+            const filter = { _id: ObjectId(id) };
             const options = { upsert: true };
             const updatedDoc = {
                 $set: {
