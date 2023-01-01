@@ -38,6 +38,7 @@ async function run() {
 
         const bookingCollection = client.db("doctorsPortal").collection("bookings");
         const userCollection = client.db("doctorsPortal").collection("users");
+        const doctorCollection = client.db("doctorsPortal").collection("doctors");
 
         // middleware verifyAdmin
         async function verifyAdmin(req, res, next) {
@@ -56,7 +57,7 @@ async function run() {
             const query = { email: email };
             const user = await userCollection.findOne(query);
             if (user) {
-                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
                 return res.send({ accessToken: token });
             }
             res.status(403).send({ accessToken: '' });
@@ -108,7 +109,6 @@ async function run() {
 
         app.post('/bookings', async (req, res) => {
             const booking = req.body;
-            console.log(booking);
             const query = {
                 appointmentDate: booking.appointmentDate,
                 email: booking.email,
@@ -136,8 +136,8 @@ async function run() {
             res.send(users);
         });
 
-        // useAdmin hook api
-        app.get('/users/admin/:email', async (req, res) => {
+        // useAdmin hook api (sending isAdmin info)
+        app.get('/users/admin/:email', verifyJWT, async (req, res) => {
             const email = req.params.email;
             const query = { email };
             const user = await userCollection.findOne(query);
@@ -162,6 +162,20 @@ async function run() {
                 }
             }
             const result = await userCollection.updateOne(filter, updatedDoc, options);
+            res.send(result);
+        });
+
+        /* -----------
+          Doctors API
+        ------------ */
+        app.get('/doctorSpecialties', async (req, res) => {
+            const query = {}
+            const result = await appointmentOptionCollection.find(query).project({name: 1}).toArray();
+            res.send(result);
+        });
+        app.post('/doctors', async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorCollection.insertOne(doctor);
             res.send(result);
         });
     }
