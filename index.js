@@ -35,7 +35,6 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 async function run() {
     try {
         const appointmentOptionCollection = client.db("doctorsPortal").collection("appointmentOptions");
-
         const bookingCollection = client.db("doctorsPortal").collection("bookings");
         const userCollection = client.db("doctorsPortal").collection("users");
         const doctorCollection = client.db("doctorsPortal").collection("doctors");
@@ -173,9 +172,24 @@ async function run() {
             const result = await appointmentOptionCollection.find(query).project({name: 1}).toArray();
             res.send(result);
         });
-        app.post('/doctors', async (req, res) => {
+
+        app.get('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
+            const query = {};
+            const cursor = doctorCollection.find(query);
+            const doctors = await cursor.toArray();
+            res.send(doctors);
+        });
+
+        app.post('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
             const doctor = req.body;
             const result = await doctorCollection.insertOne(doctor);
+            res.send(result);
+        });
+
+        app.delete('/doctors/:id', verifyJWT, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const query = {_id: ObjectId(id)};
+            const result = await doctorCollection.deleteOne(query);
             res.send(result);
         });
     }
