@@ -3,6 +3,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -38,6 +39,7 @@ async function run() {
         const bookingCollection = client.db("doctorsPortal").collection("bookings");
         const userCollection = client.db("doctorsPortal").collection("users");
         const doctorCollection = client.db("doctorsPortal").collection("doctors");
+        const paymentCollection = client.db("doctorsPortal").collection("payments");
 
         // middleware verifyAdmin
         async function verifyAdmin(req, res, next) {
@@ -61,6 +63,48 @@ async function run() {
             }
             res.status(403).send({ accessToken: '' });
         });
+
+        /* ---------------
+            PAYMENT API
+        -----------------*/
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+            const { price } = req.body;
+            const amount = price * 100; // converted to cents
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                "payment_method_types": [
+                    "card"
+                ],
+            })
+
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+        // add payments info to DB
+        app.post('/payments', verifyJWT, async (req, res) => {
+            const payment = req.body;
+            const result = await paymentCollection.insertOne(payment);
+            // update in bookingCollection
+            const id = payment.bookingId;
+            const filter = {_id: ObjectId(id)};
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId
+                }
+            }
+            const updatedResult = await bookingCollection.updateOne(filter, updatedDoc);
+            /* --------------------------------------------------- */
+            res.send(result);
+        });
+
+        /* -----------------------
+          Appointment Options API
+        ----------------------- */
 
         // use aggregate to query multiple collection and merge data
         app.get('/appointmentOptions', async (req, res) => {
@@ -106,7 +150,14 @@ async function run() {
             res.send(bookings);
         });
 
-        app.post('/bookings', async (req, res) => {
+        app.get('/bookings/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const booking = await bookingCollection.findOne(query);
+            res.send(booking);
+        });
+
+        app.post('/bookings', verifyJWT, async (req, res) => {
             const booking = req.body;
             const query = {
                 appointmentDate: booking.appointmentDate,
@@ -164,12 +215,25 @@ async function run() {
             res.send(result);
         });
 
+        // temporary: add price field to appointmentOptions
+        // app.get('/addPrice', async (req, res) => {
+        //     const filter = {};
+        //     const options = {upsert: true};
+        //     const updatedDoc = {
+        //         $set: {
+        //             price: 99
+        //         }
+        //     }
+        //     const result = await appointmentOptionCollection.updateMany(filter, updatedDoc, options);
+        //     res.send(result);
+        // });
+
         /* -----------
           Doctors API
         ------------ */
         app.get('/doctorSpecialties', async (req, res) => {
             const query = {}
-            const result = await appointmentOptionCollection.find(query).project({name: 1}).toArray();
+            const result = await appointmentOptionCollection.find(query).project({ name: 1 }).toArray();
             res.send(result);
         });
 
@@ -188,7 +252,7 @@ async function run() {
 
         app.delete('/doctors/:id', verifyJWT, verifyAdmin, async (req, res) => {
             const id = req.params.id;
-            const query = {_id: ObjectId(id)};
+            const query = { _id: ObjectId(id) };
             const result = await doctorCollection.deleteOne(query);
             res.send(result);
         });
